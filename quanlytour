@@ -1,0 +1,257 @@
+from flask import Flask, render_template, request, redirect, url_for, flash
+
+app = Flask(__name__)
+app.secret_key = "du-lich-secret-key"
+
+# =========================
+# DỮ LIỆU MẪU
+# =========================
+
+tours = [
+    {
+        "id": 1,
+        "name": "Đà Nẵng - Hội An 3N2Đ",
+        "location": "Đà Nẵng - Hội An",
+        "duration": "3 ngày 2 đêm",
+        "price": 2590000,
+        "image": "https://images.unsplash.com/photo-1559592413-7cec4d0cae2b",
+        "description": "Khám phá Đà Nẵng, Bà Nà Hills và phố cổ Hội An."
+    },
+    {
+        "id": 2,
+        "name": "Đà Lạt Mộng Mơ 3N2Đ",
+        "location": "Đà Lạt",
+        "duration": "3 ngày 2 đêm",
+        "price": 2290000,
+        "image": "https://images.unsplash.com/photo-1557750255-c76072a7aad1",
+        "description": "Tham quan thành phố ngàn hoa, hồ Xuân Hương và các điểm check-in nổi tiếng."
+    },
+    {
+        "id": 3,
+        "name": "Phú Quốc Thiên Đường 4N3Đ",
+        "location": "Phú Quốc",
+        "duration": "4 ngày 3 đêm",
+        "price": 4990000,
+        "image": "https://images.unsplash.com/photo-1528181304800-259b08848526",
+        "description": "Tận hưởng biển xanh, đảo đẹp và các hoạt động vui chơi tại Phú Quốc."
+    },
+    {
+        "id": 4,
+        "name": "Hà Nội - Hạ Long 3N2Đ",
+        "location": "Hà Nội - Hạ Long",
+        "duration": "3 ngày 2 đêm",
+        "price": 3190000,
+        "image": "https://images.unsplash.com/photo-1528127269322-539801943592",
+        "description": "Khám phá thủ đô Hà Nội và kỳ quan thiên nhiên Vịnh Hạ Long."
+    }
+]
+
+bookings = []
+
+
+# =========================
+# TRANG CHỦ
+# =========================
+
+@app.route("/")
+def home():
+    return render_template("index.html", tours=tours)
+
+
+# =========================
+# DANH SÁCH TOUR
+# =========================
+
+@app.route("/tours")
+def tour_list():
+    keyword = request.args.get("keyword", "").strip().lower()
+
+    if keyword:
+        result = [
+            tour for tour in tours
+            if keyword in tour["name"].lower()
+            or keyword in tour["location"].lower()
+        ]
+    else:
+        result = tours
+
+    return render_template(
+        "tours.html",
+        tours=result,
+        keyword=keyword
+    )
+
+
+# =========================
+# CHI TIẾT TOUR
+# =========================
+
+@app.route("/tour/<int:tour_id>")
+def tour_detail(tour_id):
+    tour = next((t for t in tours if t["id"] == tour_id), None)
+
+    if not tour:
+        return "Không tìm thấy tour", 404
+
+    return render_template("tour_detail.html", tour=tour)
+
+
+# =========================
+# ĐẶT TOUR
+# =========================
+
+@app.route("/book/<int:tour_id>", methods=["GET", "POST"])
+def book_tour(tour_id):
+    tour = next((t for t in tours if t["id"] == tour_id), None)
+
+    if not tour:
+        return "Không tìm thấy tour", 404
+
+    if request.method == "POST":
+
+        customer_name = request.form.get("customer_name")
+        phone = request.form.get("phone")
+        email = request.form.get("email")
+        travel_date = request.form.get("travel_date")
+
+        try:
+            adults = int(request.form.get("adults", 1))
+            children = int(request.form.get("children", 0))
+        except ValueError:
+            flash("Số lượng khách không hợp lệ.")
+            return redirect(url_for("book_tour", tour_id=tour_id))
+
+        if adults < 1:
+            flash("Phải có ít nhất 1 người lớn.")
+            return redirect(url_for("book_tour", tour_id=tour_id))
+
+        # Trẻ em tính 70% giá tour
+        total = (
+            adults * tour["price"]
+            + children * tour["price"] * 0.7
+        )
+
+        booking = {
+            "id": len(bookings) + 1,
+            "tour_id": tour["id"],
+            "tour_name": tour["name"],
+            "customer_name": customer_name,
+            "phone": phone,
+            "email": email,
+            "travel_date": travel_date,
+            "adults": adults,
+            "children": children,
+            "total": int(total),
+            "status": "Chờ xác nhận"
+        }
+
+        bookings.append(booking)
+
+        return render_template(
+            "booking_success.html",
+            booking=booking
+        )
+
+    return render_template("booking.html", tour=tour)
+
+
+# =========================
+# ADMIN
+# =========================
+
+@app.route("/admin")
+def admin():
+    revenue = sum(b["total"] for b in bookings)
+
+    return render_template(
+        "admin.html",
+        tours=tours,
+        bookings=bookings,
+        revenue=revenue
+    )
+
+
+# =========================
+# THÊM TOUR
+# =========================
+
+@app.route("/admin/add-tour", methods=["GET", "POST"])
+def add_tour():
+
+    if request.method == "POST":
+
+        name = request.form.get("name")
+        location = request.form.get("location")
+        duration = request.form.get("duration")
+        price = request.form.get("price")
+        description = request.form.get("description")
+        image = request.form.get("image")
+
+        try:
+            price = int(price)
+        except ValueError:
+            flash("Giá tour không hợp lệ.")
+            return redirect(url_for("add_tour"))
+
+        new_tour = {
+            "id": len(tours) + 1,
+            "name": name,
+            "location": location,
+            "duration": duration,
+            "price": price,
+            "image": image,
+            "description": description
+        }
+
+        tours.append(new_tour)
+
+        return redirect(url_for("admin"))
+
+    return render_template("add_tour.html")
+
+
+# =========================
+# XÓA TOUR
+# =========================
+
+@app.route("/admin/delete-tour/<int:tour_id>")
+def delete_tour(tour_id):
+
+    global tours
+
+    tours = [
+        tour for tour in tours
+        if tour["id"] != tour_id
+    ]
+
+    return redirect(url_for("admin"))
+
+
+# =========================
+# XÁC NHẬN BOOKING
+# =========================
+
+@app.route("/admin/confirm/<int:booking_id>")
+def confirm_booking(booking_id):
+
+    booking = next(
+        (b for b in bookings if b["id"] == booking_id),
+        None
+    )
+
+    if booking:
+        booking["status"] = "Đã xác nhận"
+
+    return redirect(url_for("admin"))
+
+
+# =========================
+# CHẠY APP
+# =========================
+
+if __name__ == "__main__":
+    app.run(
+        debug=True,
+        host="127.0.0.1",
+        port=5000
+    )
